@@ -1,0 +1,92 @@
+import { NextRequest, NextResponse } from "next/server";
+import { Groq } from "groq-sdk";
+import { getDetailedAnswerPrompt } from "@/prompts/detailedAnswer";
+import { extractRecentContext } from "@/lib/heuristics";
+import { validateApiKey } from "@/lib/validators";
+import { TranscriptChunk, ChatMessage } from "@/types";
+import { v4 as uuidv4 } from "uuid";
+
+export async function POST(request: NextRequest) {
+  try {
+    const {
+      suggestion,
+      transcript = [],
+      apiKey,
+      contextWindow = 8,
+      model = "mixtral-8x7b-32768",
+      temperature = 0.7,
+      topP = 0.9,
+    } = await request.json();
+
+    if (!apiKey || !validateApiKey(apiKey)) {
+      return NextResponse.json(
+        { error: "Invalid API key" },
+        { status: 400 }
+      );
+    }
+
+    if (!suggestion || typeof suggestion !== "string") {
+      return NextResponse.json(
+        { error: "Suggestion required" },
+        { status: 400 }
+      );
+    }
+
+    const recentContext = extractRecentContext(
+      transcript as TranscriptChunk[],
+      Math.max(contextWindow, 1)
+    );
+
+    const prompt = getDetailedAnswerPrompt(suggestion, recentContext);
+
+    const groq = new Groq({ apiKey });
+
+    const completion = await groq.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature,
+      top_p: topP,
+      max_tokens: 1500,
+    });
+
+    const responseText = completion.choices[0]?.message?.content || "";
+
+    const message: ChatMessage = {
+      id: uuidv4(),
+      role: "assistant",
+      content: responseText,
+      timestamp: new Date().toISOString(),
+    };
+
+    return NextResponse.json(
+      { message },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("Detailed answer error:", error);
+
+    if (error.message?.includes("401")) {
+      return NextResponse.json(
+        { error: "Invalid API key" },
+        { status: 401 }
+      );
+    }
+
+    if (error.message?.includes("429")) {
+      return NextResponse.json(
+        { error: "Rate limited. Please try again." },
+        { status: 429 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Failed to generate answer: " + error.message },
+      { status: 500 }
+    );
+  }
+}
