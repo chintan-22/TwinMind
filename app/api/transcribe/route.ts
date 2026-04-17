@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Groq } from "groq-sdk";
+import { getErrorMessage, hasStatusCode } from "@/lib/errors";
 import { validateApiKey, validateTranscription } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
@@ -57,17 +58,18 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Transcription error:", error);
+    const message = getErrorMessage(error, "Unknown transcription error");
 
-    if (error.message?.includes("401")) {
+    if (hasStatusCode(error, 401)) {
       return NextResponse.json(
         { error: "Invalid API key" },
         { status: 401 }
       );
     }
 
-    if (error.message?.includes("429")) {
+    if (hasStatusCode(error, 429)) {
       return NextResponse.json(
         { error: "Rate limited. Please wait." },
         { status: 429 }
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Transcription failed: " + error.message },
+      { error: "Transcription failed: " + message },
       { status: 500 }
     );
   }

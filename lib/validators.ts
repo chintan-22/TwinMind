@@ -1,4 +1,4 @@
-import { Suggestion, SuggestionBatch } from "@/types";
+import { Suggestion, SuggestionBatch, SuggestionType } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 
 const SUGGESTION_TYPES = [
@@ -8,7 +8,11 @@ const SUGGESTION_TYPES = [
   "fact_check",
   "clarification",
   "next_step",
-];
+] as const satisfies SuggestionType[];
+
+function isSuggestionType(value: string): value is SuggestionType {
+  return SUGGESTION_TYPES.includes(value as SuggestionType);
+}
 
 export function validateAndSanitizeSuggestions(
   data: unknown
@@ -25,17 +29,20 @@ export function validateAndSanitizeSuggestions(
       "title" in item &&
       "preview" in item
     ) {
-      const suggestion = item as Suggestion;
+      const suggestionType = String(item.type);
 
-      if (!SUGGESTION_TYPES.includes(suggestion.type)) {
+      if (!isSuggestionType(suggestionType)) {
         continue;
       }
 
       suggestions.push({
-        id: suggestion.id || uuidv4(),
-        type: suggestion.type as any,
-        title: String(suggestion.title).slice(0, 100),
-        preview: String(suggestion.preview).slice(0, 200),
+        id:
+          "id" in item && typeof item.id === "string" && item.id
+            ? item.id
+            : uuidv4(),
+        type: suggestionType,
+        title: String(item.title).slice(0, 100),
+        preview: String(item.preview).slice(0, 200),
       });
     }
   }

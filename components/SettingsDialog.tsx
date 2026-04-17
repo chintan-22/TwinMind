@@ -2,7 +2,7 @@
 
 import { SessionSettings } from "@/types";
 import { X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -17,11 +17,7 @@ export function SettingsDialog({
   settings,
   onSave,
 }: SettingsDialogProps) {
-  const [formData, setFormData] = useState(settings);
-
-  useEffect(() => {
-    setFormData(settings);
-  }, [settings]);
+  const [formData, setFormData] = useState<SessionSettings>(() => settings);
 
   if (!isOpen) return null;
 

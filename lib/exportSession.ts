@@ -1,10 +1,16 @@
-import { SessionExport } from "@/types";
+import {
+  ChatMessage,
+  SessionExport,
+  SessionSettings,
+  SuggestionBatch,
+  TranscriptChunk,
+} from "@/types";
 
 export function createSessionExport(
-  transcript: any[],
-  suggestionBatches: any[],
-  chatMessages: any[],
-  settings: any
+  transcript: TranscriptChunk[],
+  suggestionBatches: SuggestionBatch[],
+  chatMessages: ChatMessage[],
+  settings: SessionSettings
 ): SessionExport {
   return {
     exportedAt: new Date().toISOString(),

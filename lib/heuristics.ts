@@ -1,10 +1,9 @@
-import { ConversationSignals, TranscriptChunk } from "@/types";
+import { ConversationSignals, SuggestionBatch, TranscriptChunk } from "@/types";
 
 export function detectConversationSignals(
   recentTranscript: TranscriptChunk[]
 ): ConversationSignals {
   const fullText = recentTranscript.map((c) => c.text).join(" ");
-  const lowerText = fullText.toLowerCase();
 
   const questionMarks = (fullText.match(/\?/g) || []).length;
   const questionKeywords =
@@ -49,7 +48,7 @@ export function extractRecentContext(
 }
 
 export function extractPreviousSuggestionTitles(
-  batches: any[],
+  batches: SuggestionBatch[],
   maxRecent: number = 10
 ): string[] {
   const titles: string[] = [];

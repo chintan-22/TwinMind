@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { Mic, Square } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
 
 interface MicControlsProps {
   onAudioChunk: (audioBlob: Blob) => void;
@@ -18,7 +19,22 @@ export function MicControls({
 }: MicControlsProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   const startRecording = async () => {
     try {
@@ -46,21 +62,28 @@ export function MicControls({
       mediaRecorder.start();
       onRecordingChange(true);
 
-      const intervalId = setInterval(() => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+
+      intervalRef.current = setInterval(() => {
         if (mediaRecorderRef.current?.state === "recording") {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.start();
         }
       }, chunkDuration * 1000);
-
-      return () => clearInterval(intervalId);
-    } catch (err: any) {
-      setError(err.message || "Failed to access microphone");
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to access microphone"));
       onRecordingChange(false);
     }
   };
 
   const stopRecording = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }
@@ -69,6 +92,8 @@ export function MicControls({
       streamRef.current.getTracks().forEach((track) => track.stop());
     }
 
+    mediaRecorderRef.current = null;
+    streamRef.current = null;
     onRecordingChange(false);
   };
 

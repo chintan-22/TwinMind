@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Settings, Download } from "lucide-react";
 import {
+  ChatResponse,
   SessionSettings,
+  SuggestionsResponse,
   TranscriptChunk,
+  TranscriptionResponse,
   SuggestionBatch,
   ChatMessage,
   Suggestion,
@@ -15,14 +18,51 @@ import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MicControls } from "@/components/MicControls";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { DEFAULT_SETTINGS, STORAGE_KEYS } from "@/lib/defaults";
+import { getErrorMessage, readApiErrorMessage } from "@/lib/errors";
 import {
   downloadSessionExport,
   createSessionExport,
 } from "@/lib/exportSession";
+import {
+  getStoredSettings,
+  saveSettings,
+  subscribeToSettings,
+} from "@/lib/settingsStore";
+
+function blobToBase64(audioBlob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Failed to read audio data"));
+        return;
+      }
+
+      const base64Audio = reader.result.split(",")[1];
+
+      if (!base64Audio) {
+        reject(new Error("Failed to encode audio data"));
+        return;
+      }
+
+      resolve(base64Audio);
+    };
+
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("Failed to read audio data"));
+    };
+
+    reader.readAsDataURL(audioBlob);
+  });
+}
 
 export default function Home() {
-  const [settings, setSettings] = useState<SessionSettings>(DEFAULT_SETTINGS);
+  const settings = useSyncExternalStore(
+    subscribeToSettings,
+    getStoredSettings,
+    getStoredSettings
+  );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptChunk[]>([]);
@@ -34,25 +74,21 @@ export default function Home() {
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
   const [isGeneratingChat, setIsGeneratingChat] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const suggestionsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const suggestionsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
 
-  // Load settings from localStorage on mount
   useEffect(() => {
-    const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings);
-        setSettings((prev) => ({ ...prev, ...parsed }));
-      } catch (e) {
-        console.error("Failed to load settings", e);
+    return () => {
+      if (suggestionsIntervalRef.current) {
+        clearInterval(suggestionsIntervalRef.current);
       }
-    }
+    };
   }, []);
 
   // Save settings to localStorage when they change
   const handleSaveSettings = useCallback((newSettings: SessionSettings) => {
-    setSettings(newSettings);
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(newSettings));
+    saveSettings(newSettings);
     setError(null);
   }, []);
 
@@ -67,47 +103,43 @@ export default function Home() {
       setIsTranscribing(true);
 
       try {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const base64Audio = (e.target?.result as string).split(",")[1];
+        const base64Audio = await blobToBase64(audioBlob);
 
-          const response = await fetch("/api/transcribe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              audioBlob: base64Audio,
-              apiKey: settings.apiKey,
-              model: settings.whisperModel,
+        const response = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            audioBlob: base64Audio,
+            apiKey: settings.apiKey,
+            model: settings.whisperModel,
+          }),
+        });
+
+        if (!response.ok) {
+          setError(
+            await readApiErrorMessage(response, "Transcription failed")
+          );
+          return;
+        }
+
+        const data = (await response.json()) as TranscriptionResponse;
+
+        if (data.text) {
+          const chunk: TranscriptChunk = {
+            id: uuidv4(),
+            text: data.text,
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
             }),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            setError(errorData.error || "Transcription failed");
-            setIsTranscribing(false);
-            return;
-          }
-
-          const data = await response.json();
-          if (data.text) {
-            const chunk: TranscriptChunk = {
-              id: uuidv4(),
-              text: data.text,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              }),
-              duration: data.duration || 0,
-            };
-            setTranscript((prev) => [...prev, chunk]);
-          }
-
-          setIsTranscribing(false);
-        };
-        reader.readAsDataURL(audioBlob);
-      } catch (err: any) {
-        setError(err.message || "Transcription error");
+            duration: data.duration || 0,
+          };
+          setTranscript((prev) => [...prev, chunk]);
+        }
+      } catch (error: unknown) {
+        setError(getErrorMessage(error, "Transcription error"));
+      } finally {
         setIsTranscribing(false);
       }
     },
@@ -144,17 +176,17 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        setError(errorData.error || "Failed to generate suggestions");
-        setIsGeneratingSuggestions(false);
+        setError(
+          await readApiErrorMessage(response, "Failed to generate suggestions")
+        );
         return;
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as SuggestionsResponse;
       setSuggestionBatches((prev) => [data.batch, ...prev]);
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Suggestions error");
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Suggestions error"));
     } finally {
       setIsGeneratingSuggestions(false);
     }
@@ -186,17 +218,15 @@ export default function Home() {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          setError(errorData.error || "Failed to generate answer");
-          setIsGeneratingChat(false);
+          setError(await readApiErrorMessage(response, "Failed to generate answer"));
           return;
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as ChatResponse;
         setChatMessages((prev) => [...prev, data.message]);
         setError(null);
-      } catch (err: any) {
-        setError(err.message || "Chat error");
+      } catch (error: unknown) {
+        setError(getErrorMessage(error, "Chat error"));
       } finally {
         setIsGeneratingChat(false);
       }
@@ -239,17 +269,15 @@ export default function Home() {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          setError(errorData.error || "Failed to send message");
-          setIsGeneratingChat(false);
+          setError(await readApiErrorMessage(response, "Failed to send message"));
           return;
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as ChatResponse;
         setChatMessages((prev) => [...prev, data.message]);
         setError(null);
-      } catch (err: any) {
-        setError(err.message || "Chat error");
+      } catch (error: unknown) {
+        setError(getErrorMessage(error, "Chat error"));
       } finally {
         setIsGeneratingChat(false);
       }
@@ -264,6 +292,11 @@ export default function Home() {
 
     // Set up suggestions refresh interval
     const intervalMs = settings.transcriptionChunkDuration * 1000 + 2000; // Add 2s buffer for transcription
+
+    if (suggestionsIntervalRef.current) {
+      clearInterval(suggestionsIntervalRef.current);
+    }
+
     suggestionsIntervalRef.current = setInterval(() => {
       generateSuggestions();
     }, intervalMs * 2); // Refresh suggestions every 2 transcription cycles
@@ -394,6 +427,7 @@ export default function Home() {
 
       {/* Settings Dialog */}
       <SettingsDialog
+        key={`${isSettingsOpen ? "open" : "closed"}:${JSON.stringify(settings)}`}
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}

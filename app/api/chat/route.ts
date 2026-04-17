@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Groq } from "groq-sdk";
 import { getChatPrompt } from "@/prompts/chat";
-import { extractRecentContext, extractPreviousSuggestionTitles } from "@/lib/heuristics";
+import { getErrorMessage, hasStatusCode } from "@/lib/errors";
+import { extractRecentContext } from "@/lib/heuristics";
 import { validateApiKey } from "@/lib/validators";
 import { TranscriptChunk, ChatMessage } from "@/types";
 import { v4 as uuidv4 } from "uuid";
@@ -67,17 +68,18 @@ export async function POST(request: NextRequest) {
       { message },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Chat error:", error);
+    const message = getErrorMessage(error, "Unknown chat error");
 
-    if (error.message?.includes("401")) {
+    if (hasStatusCode(error, 401)) {
       return NextResponse.json(
         { error: "Invalid API key" },
         { status: 401 }
       );
     }
 
-    if (error.message?.includes("429")) {
+    if (hasStatusCode(error, 429)) {
       return NextResponse.json(
         { error: "Rate limited. Please try again." },
         { status: 429 }
@@ -85,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Failed to generate response: " + error.message },
+      { error: "Failed to generate response: " + message },
       { status: 500 }
     );
   }

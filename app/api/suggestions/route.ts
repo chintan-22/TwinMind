@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Groq } from "groq-sdk";
+import { getErrorMessage, hasStatusCode } from "@/lib/errors";
 import { getLiveSuggestionsPrompt, parseJson } from "@/prompts/liveSuggestions";
 import { detectConversationSignals, extractRecentContext, extractPreviousSuggestionTitles } from "@/lib/heuristics";
 import { validateAndSanitizeSuggestions, createSuggestionBatch, validateApiKey } from "@/lib/validators";
@@ -96,17 +97,18 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Suggestions error:", error);
+    const message = getErrorMessage(error, "Unknown suggestions error");
 
-    if (error.message?.includes("401")) {
+    if (hasStatusCode(error, 401)) {
       return NextResponse.json(
         { error: "Invalid API key" },
         { status: 401 }
       );
     }
 
-    if (error.message?.includes("429")) {
+    if (hasStatusCode(error, 429)) {
       return NextResponse.json(
         { error: "Rate limited. Please try again." },
         { status: 429 }
@@ -114,7 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Failed to generate suggestions: " + error.message },
+      { error: "Failed to generate suggestions: " + message },
       { status: 500 }
     );
   }
