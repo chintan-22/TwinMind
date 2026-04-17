@@ -11,6 +11,27 @@ interface MicControlsProps {
   onRecordingChange: (recording: boolean) => void;
 }
 
+const RECORDER_MIME_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+] as const;
+
+function getSupportedMimeType(): string | undefined {
+  if (
+    typeof MediaRecorder === "undefined" ||
+    typeof MediaRecorder.isTypeSupported !== "function"
+  ) {
+    return undefined;
+  }
+
+  return RECORDER_MIME_TYPES.find((mimeType) =>
+    MediaRecorder.isTypeSupported(mimeType)
+  );
+}
+
 export function MicControls({
   onAudioChunk,
   chunkDuration,
@@ -39,24 +60,38 @@ export function MicControls({
   const startRecording = async () => {
     try {
       setError(null);
+
+      if (typeof MediaRecorder === "undefined") {
+        throw new Error("This browser does not support audio recording.");
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/wav",
-      });
+      const supportedMimeType = getSupportedMimeType();
+      const mediaRecorder = supportedMimeType
+        ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
+      const recordingMimeType =
+        mediaRecorder.mimeType || supportedMimeType || "audio/webm";
 
       const chunks: BlobPart[] = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        chunks.push(event.data);
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
       };
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(chunks, { type: "audio/wav" });
-        onAudioChunk(audioBlob);
+        if (chunks.length === 0) {
+          return;
+        }
+
+        const audioBlob = new Blob(chunks, { type: recordingMimeType });
         chunks.length = 0;
+        onAudioChunk(audioBlob);
       };
 
       mediaRecorder.start();
@@ -73,6 +108,9 @@ export function MicControls({
         }
       }, chunkDuration * 1000);
     } catch (error: unknown) {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      mediaRecorderRef.current = null;
       setError(getErrorMessage(error, "Failed to access microphone"));
       onRecordingChange(false);
     }

@@ -19,7 +19,7 @@ export function TranscriptPanel({ transcript, isLoading }: TranscriptPanelProps)
 
   return (
     <div className="flex flex-col h-full bg-white border-r border-gray-200">
-      <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10">
+      <div className="shrink-0 bg-white border-b border-gray-200 p-4">
         <h2 className="text-lg font-semibold text-gray-900">Transcript</h2>
         <p className="text-sm text-gray-500 mt-1">
           {transcript.length} chunk{transcript.length !== 1 ? "s" : ""}

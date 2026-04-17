@@ -3,9 +3,31 @@ import { Groq } from "groq-sdk";
 import { getErrorMessage, hasStatusCode } from "@/lib/errors";
 import { validateApiKey, validateTranscription } from "@/lib/validators";
 
+function getAudioExtension(mimeType: string): string {
+  switch (mimeType) {
+    case "audio/mp4":
+      return "mp4";
+    case "audio/ogg":
+    case "audio/ogg;codecs=opus":
+      return "ogg";
+    case "audio/webm":
+    case "audio/webm;codecs=opus":
+      return "webm";
+    case "audio/wav":
+      return "wav";
+    default:
+      return "webm";
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { audioBlob, apiKey, model = "whisper-large-v3" } =
+    const {
+      audioBlob,
+      mimeType = "audio/webm",
+      apiKey,
+      model = "whisper-large-v3-turbo",
+    } =
       await request.json();
 
     if (!apiKey) {
@@ -32,9 +54,11 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(audioBlob, "base64");
 
     const groq = new Groq({ apiKey });
+    const fileType = typeof mimeType === "string" ? mimeType : "audio/webm";
+    const fileExtension = getAudioExtension(fileType);
 
-    const transcriptionFile = new File([buffer], "audio.wav", {
-      type: "audio/wav",
+    const transcriptionFile = new File([buffer], `audio.${fileExtension}`, {
+      type: fileType,
     });
 
     const transcription = await groq.audio.transcriptions.create({

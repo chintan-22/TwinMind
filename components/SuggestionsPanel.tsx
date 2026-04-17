@@ -19,7 +19,7 @@ export function SuggestionsPanel({
 }: SuggestionsPanelProps) {
   return (
     <div className="flex flex-col h-full bg-gray-50 border-r border-gray-200">
-      <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10">
+      <div className="shrink-0 bg-white border-b border-gray-200 p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Suggestions</h2>

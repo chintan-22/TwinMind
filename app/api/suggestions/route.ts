@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       suggestionBatches = [],
       apiKey,
       contextWindow = 3,
-      model = "mixtral-8x7b-32768",
+      model = "llama-3.3-70b-versatile",
       temperature = 0.7,
       topP = 0.9,
     } = await request.json();

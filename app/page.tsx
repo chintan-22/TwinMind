@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Settings, Download } from "lucide-react";
 import {
   ChatResponse,
-  SessionSettings,
   SuggestionsResponse,
   TranscriptChunk,
   TranscriptionResponse,
@@ -17,15 +17,14 @@ import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MicControls } from "@/components/MicControls";
-import { SettingsDialog } from "@/components/SettingsDialog";
 import { getErrorMessage, readApiErrorMessage } from "@/lib/errors";
 import {
   downloadSessionExport,
   createSessionExport,
 } from "@/lib/exportSession";
 import {
+  getServerSettingsSnapshot,
   getStoredSettings,
-  saveSettings,
   subscribeToSettings,
 } from "@/lib/settingsStore";
 
@@ -61,9 +60,8 @@ export default function Home() {
   const settings = useSyncExternalStore(
     subscribeToSettings,
     getStoredSettings,
-    getStoredSettings
+    getServerSettingsSnapshot
   );
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptChunk[]>([]);
   const [suggestionBatches, setSuggestionBatches] = useState<SuggestionBatch[]>(
@@ -86,12 +84,6 @@ export default function Home() {
     };
   }, []);
 
-  // Save settings to localStorage when they change
-  const handleSaveSettings = useCallback((newSettings: SessionSettings) => {
-    saveSettings(newSettings);
-    setError(null);
-  }, []);
-
   // Handle audio chunk from microphone
   const handleAudioChunk = useCallback(
     async (audioBlob: Blob) => {
@@ -110,6 +102,7 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             audioBlob: base64Audio,
+            mimeType: audioBlob.type || "audio/webm",
             apiKey: settings.apiKey,
             model: settings.whisperModel,
           }),
@@ -329,9 +322,9 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white shadow-sm">
+      <header className="relative z-30 border-b border-gray-200 bg-white shadow-sm">
         <div className="max-w-full px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">TwinMind</h1>
               <p className="text-sm text-gray-500">
@@ -339,7 +332,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 md:justify-end">
               {!settings.apiKey && (
                 <div className="text-sm text-red-600 font-medium">
                   ⚠️ API Key not set
@@ -355,21 +348,22 @@ export default function Home() {
               <button
                 onClick={handleExportSession}
                 disabled={transcript.length === 0}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Export session as JSON"
+                type="button"
               >
                 <Download size={16} />
                 Export
               </button>
 
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              <Link
+                href="/settings"
+                className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                 title="Open settings"
               >
                 <Settings size={16} />
                 Settings
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -425,14 +419,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Settings Dialog */}
-      <SettingsDialog
-        key={`${isSettingsOpen ? "open" : "closed"}:${JSON.stringify(settings)}`}
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onSave={handleSaveSettings}
-      />
     </div>
   );
 }
