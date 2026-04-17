@@ -2,7 +2,7 @@
 
 import { ChatMessage } from "@/types";
 import { useRef, useEffect, useState } from "react";
-import { Send } from "lucide-react";
+import { MessageSquareText, Send, Sparkles } from "lucide-react";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -47,23 +47,46 @@ export function ChatPanel({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white border-l border-gray-200">
-      <div className="shrink-0 bg-white border-b border-gray-200 p-4">
-        <h2 className="text-lg font-semibold text-gray-900">Chat</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          {messages.length} message{messages.length !== 1 ? "s" : ""}
-        </p>
+    <div className="flex h-full min-h-[24rem] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/88 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="shrink-0 border-b border-slate-200/80 bg-white/90 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                <MessageSquareText size={18} />
+              </span>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Chat</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Ask follow-ups or tap a suggestion to dig deeper.
+                </p>
+              </div>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {messages.length} message{messages.length !== 1 ? "s" : ""}
+          </span>
+        </div>
       </div>
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4"
+        className="flex-1 space-y-4 overflow-y-auto bg-slate-50/60 px-4 py-4 sm:px-5"
       >
         {messages.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-500 text-sm">
-              Click a suggestion or type a question to start chatting.
-            </p>
+          <div className="flex min-h-[16rem] items-center justify-center py-6">
+            <div className="max-w-sm rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <Sparkles size={20} />
+              </div>
+              <p className="text-sm font-semibold text-slate-900">
+                Start the conversation here
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Click a suggestion for an instant answer, or type your own
+                question to get a response grounded in the latest transcript.
+              </p>
+            </div>
           </div>
         ) : (
           messages.map((msg) => (
@@ -74,32 +97,24 @@ export function ChatPanel({
               }`}
             >
               <div
-                className={`max-w-xs lg:max-w-sm xl:max-w-md px-4 py-3 rounded-lg ${
+                className={`max-w-[88%] rounded-3xl px-4 py-3 shadow-sm ring-1 ${
                   msg.role === "user"
-                    ? "bg-blue-500 text-white rounded-br-none"
-                    : "bg-gray-100 text-gray-900 rounded-bl-none"
+                    ? "rounded-br-lg bg-blue-600 text-white ring-blue-500/20"
+                    : "rounded-bl-lg bg-white text-slate-900 ring-slate-200"
                 }`}
               >
-                <div className="text-sm prose prose-sm max-w-none">
-                  {msg.role === "assistant" ? (
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: msg.content
-                          .replace(/\n/g, "<br />")
-                          .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-                          .replace(/\*(.*?)\*/g, "<em>$1</em>")
-                          .replace(/^- (.*?)$/gm, "<li>$1</li>"),
-                      }}
-                    />
-                  ) : (
-                    msg.content
-                  )}
-                </div>
+                <p
+                  className={`whitespace-pre-wrap break-words text-sm leading-6 ${
+                    msg.role === "user" ? "text-white" : "text-slate-800"
+                  }`}
+                >
+                  {msg.content}
+                </p>
                 <div
-                  className={`text-xs mt-2 opacity-70 ${
+                  className={`mt-3 text-[11px] font-medium ${
                     msg.role === "user"
                       ? "text-blue-100"
-                      : "text-gray-500"
+                      : "text-slate-400"
                   }`}
                 >
                   {new Date(msg.timestamp).toLocaleTimeString([], {
@@ -113,41 +128,51 @@ export function ChatPanel({
         )}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-900 px-4 py-3 rounded-lg rounded-bl-none">
+            <div className="rounded-3xl rounded-bl-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <div className="flex gap-1">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                <div className="h-2 w-2 rounded-full bg-slate-400 animate-bounce" />
                 <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  className="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
                   style={{ animationDelay: "0.1s" }}
                 />
                 <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  className="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
                   style={{ animationDelay: "0.2s" }}
                 />
               </div>
+              <p className="mt-2 text-xs font-medium text-slate-400">
+                Thinking...
+              </p>
             </div>
           </div>
         )}
       </div>
 
-      <div className="border-t border-gray-200 p-4 bg-white">
-        <div className="flex gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your question or press Enter to send..."
-            disabled={isSubmitting || isLoading}
-            className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-50"
-            rows={3}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isSubmitting || isLoading}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <Send size={18} />
-          </button>
+      <div className="shrink-0 border-t border-slate-200/80 bg-white/92 p-4">
+        <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-3 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask a follow-up, request a summary, or clarify a point..."
+              disabled={isSubmitting || isLoading}
+              className="min-h-[5.5rem] flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              rows={3}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isSubmitting || isLoading}
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              type="button"
+            >
+              <Send size={16} />
+              Send
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-slate-400">
+            Press Enter to send. Use Shift+Enter for a new line.
+          </p>
         </div>
       </div>
     </div>

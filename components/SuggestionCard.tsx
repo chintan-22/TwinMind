@@ -11,7 +11,7 @@ interface SuggestionCardProps {
 
 const TYPE_COLORS: Record<string, string> = {
   question: "bg-blue-100 text-blue-800",
-  talking_point: "bg-purple-100 text-purple-800",
+  talking_point: "bg-slate-100 text-slate-700",
   answer: "bg-green-100 text-green-800",
   fact_check: "bg-orange-100 text-orange-800",
   clarification: "bg-cyan-100 text-cyan-800",
@@ -36,27 +36,34 @@ export function SuggestionCard({
     <button
       onClick={() => onClick(suggestion)}
       disabled={isLoading}
-      className="w-full text-left bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-400 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+      className="group w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50/40 disabled:cursor-not-allowed disabled:opacity-50"
+      type="button"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="mb-3 flex items-center gap-2">
             <span
-              className={`text-xs font-semibold px-2 py-1 rounded-full ${
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                 TYPE_COLORS[suggestion.type] || TYPE_COLORS.question
               }`}
             >
               {TYPE_LABELS[suggestion.type] || suggestion.type}
             </span>
           </div>
-          <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors mb-2">
+          <h3 className="mb-2 text-base font-semibold text-slate-900 transition-colors group-hover:text-blue-700">
             {suggestion.title}
           </h3>
-          <p className="text-sm text-gray-600 leading-snug">
+          <p className="text-sm leading-6 text-slate-600">
             {suggestion.preview}
           </p>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
+            Open in chat
+          </p>
         </div>
-        <ChevronRight className="text-gray-400 group-hover:text-blue-600 flex-shrink-0 mt-1 transition-colors" size={20} />
+        <ChevronRight
+          className="mt-1 shrink-0 text-slate-400 transition-all group-hover:translate-x-0.5 group-hover:text-blue-600"
+          size={20}
+        />
       </div>
     </button>
   );

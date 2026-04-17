@@ -75,6 +75,11 @@ export default function Home() {
   const suggestionsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null
   );
+  const transcriptRef = useRef<TranscriptChunk[]>([]);
+  const suggestionBatchesRef = useRef<SuggestionBatch[]>([]);
+  const isRecordingRef = useRef(false);
+  const isGeneratingSuggestionsRef = useRef(false);
+  const pendingSuggestionsGenerationRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -83,6 +88,82 @@ export default function Home() {
       }
     };
   }, []);
+
+  // Generate suggestions
+  const generateSuggestions = useCallback(
+    async (options?: {
+      transcript?: TranscriptChunk[];
+      suggestionBatches?: SuggestionBatch[];
+    }) => {
+      if (isGeneratingSuggestionsRef.current) {
+        pendingSuggestionsGenerationRef.current = true;
+        return;
+      }
+
+      if (!settings.apiKey) {
+        setError("Please set your Groq API key in settings");
+        return;
+      }
+
+      const transcriptToUse = options?.transcript ?? transcriptRef.current;
+      const batchesToUse =
+        options?.suggestionBatches ?? suggestionBatchesRef.current;
+
+      if (transcriptToUse.length === 0) {
+        setError("No transcript to generate suggestions from");
+        return;
+      }
+
+      isGeneratingSuggestionsRef.current = true;
+      setIsGeneratingSuggestions(true);
+
+      try {
+        const response = await fetch("/api/suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transcript: transcriptToUse,
+            suggestionBatches: batchesToUse,
+            apiKey: settings.apiKey,
+            contextWindow: settings.liveContextWindow,
+            model: settings.suggestionModel,
+            temperature: settings.temperature,
+            topP: settings.topP,
+          }),
+        });
+
+        if (!response.ok) {
+          setError(
+            await readApiErrorMessage(response, "Failed to generate suggestions")
+          );
+          return;
+        }
+
+        const data = (await response.json()) as SuggestionsResponse;
+        const nextBatches = [data.batch, ...suggestionBatchesRef.current];
+        suggestionBatchesRef.current = nextBatches;
+        setSuggestionBatches(nextBatches);
+        setError(null);
+      } catch (error: unknown) {
+        setError(getErrorMessage(error, "Suggestions error"));
+      } finally {
+        isGeneratingSuggestionsRef.current = false;
+        setIsGeneratingSuggestions(false);
+
+        if (pendingSuggestionsGenerationRef.current) {
+          pendingSuggestionsGenerationRef.current = false;
+          void generateSuggestions();
+        }
+      }
+    },
+    [
+      settings.apiKey,
+      settings.liveContextWindow,
+      settings.suggestionModel,
+      settings.temperature,
+      settings.topP,
+    ]
+  );
 
   // Handle audio chunk from microphone
   const handleAudioChunk = useCallback(
@@ -128,7 +209,14 @@ export default function Home() {
             }),
             duration: data.duration || 0,
           };
-          setTranscript((prev) => [...prev, chunk]);
+          const nextTranscript = [...transcriptRef.current, chunk];
+
+          transcriptRef.current = nextTranscript;
+          setTranscript(nextTranscript);
+
+          if (!isRecordingRef.current) {
+            void generateSuggestions({ transcript: nextTranscript });
+          }
         }
       } catch (error: unknown) {
         setError(getErrorMessage(error, "Transcription error"));
@@ -136,54 +224,8 @@ export default function Home() {
         setIsTranscribing(false);
       }
     },
-    [settings]
+    [generateSuggestions, settings.apiKey, settings.whisperModel]
   );
-
-  // Generate suggestions
-  const generateSuggestions = useCallback(async () => {
-    if (!settings.apiKey) {
-      setError("Please set your Groq API key in settings");
-      return;
-    }
-
-    if (transcript.length === 0) {
-      setError("No transcript to generate suggestions from");
-      return;
-    }
-
-    setIsGeneratingSuggestions(true);
-
-    try {
-      const response = await fetch("/api/suggestions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript,
-          suggestionBatches,
-          apiKey: settings.apiKey,
-          contextWindow: settings.liveContextWindow,
-          model: settings.suggestionModel,
-          temperature: settings.temperature,
-          topP: settings.topP,
-        }),
-      });
-
-      if (!response.ok) {
-        setError(
-          await readApiErrorMessage(response, "Failed to generate suggestions")
-        );
-        return;
-      }
-
-      const data = (await response.json()) as SuggestionsResponse;
-      setSuggestionBatches((prev) => [data.batch, ...prev]);
-      setError(null);
-    } catch (error: unknown) {
-      setError(getErrorMessage(error, "Suggestions error"));
-    } finally {
-      setIsGeneratingSuggestions(false);
-    }
-  }, [settings, transcript, suggestionBatches]);
 
   // Handle suggestion click
   const handleSuggestionClick = useCallback(
@@ -281,6 +323,7 @@ export default function Home() {
   // Start recording
   const handleStartRecording = useCallback(() => {
     setError(null);
+    isRecordingRef.current = true;
     setIsRecording(true);
 
     // Set up suggestions refresh interval
@@ -297,6 +340,7 @@ export default function Home() {
 
   // Stop recording
   const handleStopRecording = useCallback(() => {
+    isRecordingRef.current = false;
     setIsRecording(false);
     if (suggestionsIntervalRef.current) {
       clearInterval(suggestionsIntervalRef.current);
@@ -320,27 +364,58 @@ export default function Home() {
   }, [transcript, suggestionBatches, chatMessages, settings]);
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="relative z-30 border-b border-gray-200 bg-white shadow-sm">
-        <div className="max-w-full px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <header className="sticky top-0 z-30 border-b border-white/70 bg-white/78 shadow-sm backdrop-blur-xl">
+        <div className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">TwinMind</h1>
-              <p className="text-sm text-gray-500">
-                Live Conversation Copilot
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                TwinMind
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Real-time meeting copilot for transcript, suggestions, and
+                grounded chat.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 md:justify-end">
+            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+              {settings.apiKey ? (
+                <div className="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
+                  API key ready
+                </div>
+              ) : (
+                <div className="rounded-full bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700">
+                  API key needed
+                </div>
+              )}
+
+              {isRecording && (
+                <div className="rounded-full bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700">
+                  Recording live
+                </div>
+              )}
+
+              {isTranscribing && (
+                <div className="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700">
+                  Transcribing
+                </div>
+              )}
+
+              {isGeneratingSuggestions && (
+                <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
+                  Updating suggestions
+                </div>
+              )}
+
               {!settings.apiKey && (
-                <div className="text-sm text-red-600 font-medium">
-                  ⚠️ API Key not set
+                <div className="rounded-full bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700">
+                  Add your Groq key in Settings
                 </div>
               )}
 
               {error && (
-                <div className="text-sm text-red-600 font-medium bg-red-50 px-3 py-2 rounded-lg">
+                <div className="rounded-2xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
                   {error}
                 </div>
               )}
@@ -348,7 +423,7 @@ export default function Home() {
               <button
                 onClick={handleExportSession}
                 disabled={transcript.length === 0}
-                className="flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Export session as JSON"
                 type="button"
               >
@@ -358,7 +433,7 @@ export default function Home() {
 
               <Link
                 href="/settings"
-                className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                 title="Open settings"
               >
                 <Settings size={16} />
@@ -370,10 +445,10 @@ export default function Home() {
       </header>
 
       {/* Main Content - 3 Column Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 xl:grid xl:grid-cols-[1.05fr_0.95fr_1.1fr] xl:items-stretch">
         {/* Left Column: Transcript + Microphone */}
-        <div className="w-1/3 flex flex-col border-r border-gray-200">
-          <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <section className="flex min-h-0 flex-col gap-4">
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/88 p-4 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur sm:p-5">
             <MicControls
               onAudioChunk={handleAudioChunk}
               chunkDuration={settings.transcriptionChunkDuration}
@@ -387,17 +462,17 @@ export default function Home() {
               }}
             />
           </div>
-          <div className="flex-1 overflow-hidden">
+          <div className="min-h-0 flex-1">
             <TranscriptPanel
               transcript={transcript}
               isLoading={isTranscribing}
             />
           </div>
-        </div>
+        </section>
 
         {/* Middle Column: Suggestions */}
-        <div className="w-1/3 flex flex-col">
-          <div className="flex-1 overflow-hidden">
+        <section className="min-h-0">
+          <div className="h-full min-h-0">
             <SuggestionsPanel
               batches={suggestionBatches}
               onSuggestionClick={handleSuggestionClick}
@@ -405,20 +480,19 @@ export default function Home() {
               isLoading={isGeneratingSuggestions}
             />
           </div>
-        </div>
+        </section>
 
         {/* Right Column: Chat */}
-        <div className="w-1/3 flex flex-col">
-          <div className="flex-1 overflow-hidden">
+        <section className="min-h-0">
+          <div className="h-full min-h-0">
             <ChatPanel
               messages={chatMessages}
               onSendMessage={handleSendMessage}
               isLoading={isGeneratingChat}
             />
           </div>
-        </div>
-      </div>
-
+        </section>
+      </main>
     </div>
   );
 }
